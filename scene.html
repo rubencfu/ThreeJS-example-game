@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="three.js"></script>
+    <script src="ammo.js"></script>
+    <script src="ColladaLoader.js"></script>
+    <script src="OrbitControls.js"></script>
+    <title>Scene</title>
+    <style>
+      .hud {
+        position: absolute;
+        color: white;
+        font-weight: bold;
+        font-size: 40px;
+        font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande',
+          'Lucida Sans', Arial, sans-serif;
+        left: 1em;
+        top: 0.5em;
+        background-color: rgba(82, 82, 82, 0.541);
+        padding: 0.5em;
+        box-shadow: 2px 3px 10px black;
+      }
+      .win {
+        left: 6em;
+        opacity: 0;
+      }
+      .mainGame {
+        display: none;
+      }
+      .title {
+        position: absolute;
+        color: white;
+        font-size: 60px;
+        width: 12em;
+        left: 13%;
+        text-shadow: 2px 3px black;
+        font-style: italic;
+        font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+      }
+      .start {
+        position: absolute;
+        left: 27%;
+        top: 39%;
+      }
+      .start:hover {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mainGame" class="mainGame">
+      <span class="hud" id="coins">Coins: 0</span>
+      <span class="hud win" id="win"></span>
+    </div>
+    <div id="mainMenu" class="mainMenu">
+      <h1 class="title">Dancing stormtrooper's Awesome Adventures</h1>
+      <button class="start hud" id="start">Play!</button>
+    </div>
+  </body>
+  <script src="mainMenu.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const hud = document.getElementById('coins');
+    const win = document.getElementById('win');
+    const mainGame = document.getElementById('mainGame');
+    const startGame = document.getElementById('start');
+    let clock = new THREE.Clock();
+    let mixer;
+    camera.position.set(0, 0, 20);
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      shadowMapEnabled: true
+    });
+    renderer.setSize(1000, 600);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    mainGame.appendChild(renderer.domElement);
+    let p = 0;
+    let avatar;
+    let animations;
+    const keyboard = {};
+    let goDown;
+    let totalCoins = 0;
+    let coin1;
+    let cubeTrigger;
+
+    const loader = new THREE.ColladaLoader();
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+    const textureLoader = new THREE.TextureLoader();
+    // movement - please calibrate these values
+    const direction = new THREE.Vector3();
+
+    let materialArray = [];
+    let texture_ft = textureLoader.load('/textures/skybox/heather_ft.jpg');
+    let texture_bk = textureLoader.load('/textures/skybox/heather_bk.jpg');
+    let texture_up = textureLoader.load('/textures/skybox/heather_up.jpg');
+    let texture_dn = textureLoader.load('/textures/skybox/heather_dn.jpg');
+    let texture_rt = textureLoader.load('/textures/skybox/heather_rt.jpg');
+    let texture_lf = textureLoader.load('/textures/skybox/heather_lf.jpg');
+
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_ft }));
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_bk }));
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_up }));
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_dn }));
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_rt }));
+    materialArray.push(new THREE.MeshBasicMaterial({ map: texture_lf }));
+
+    for (let i = 0; i < 6; i++) materialArray[i].side = THREE.BackSide;
+
+    let skyboxGeo = new THREE.BoxGeometry(500, 500, 500);
+    let skybox = new THREE.Mesh(skyboxGeo, materialArray);
+    scene.add(skybox);
+
+    window.addEventListener(
+      'keydown',
+      event => {
+        var keyCode = event.keyCode;
+        keyboard[keyCode] = true;
+      },
+      true
+    );
+    window.addEventListener(
+      'keypress',
+      event => {
+        var keyCode = event.keyCode;
+        if (keyCode === 32) {
+          keyboard[32] = true;
+        }
+      },
+      true
+    );
+    window.addEventListener(
+      'keyup',
+      event => {
+        var keyCode = event.keyCode;
+        if (keyCode != 32) {
+          keyboard[keyCode] = false;
+        }
+      },
+      true
+    );
+    loader.load('./models/stormtrooper.dae', collada => {
+      avatar = collada.scene;
+      animations = collada.animations;
+      avatar.traverse(function(node) {
+        if (node.isSkinnedMesh) {
+          node.frustumCulled = false;
+        }
+        node.castShadow = true;
+        node.receiveShadow = true;
+      });
+      avatar.position.set(0, 0, 0);
+      avatar.scale.set(1, 1, 1);
+      avatar.castShadow = true;
+      avatar.receiveShadow = true;
+      mixer = new THREE.AnimationMixer(avatar);
+      avatar.add(camera);
+      var geometry = new THREE.BoxGeometry(3, 9, 3, 8, 8, 8);
+      var material = new THREE.MeshPhongMaterial({
+        transparent: true,
+        opacity: 0
+      });
+      cubeTrigger = new THREE.Mesh(geometry, material);
+      cubeTrigger.position.z = 2;
+      cubeTrigger.rotation.x = 80;
+      cubeTrigger.geometry.computeBoundingBox();
+      avatar.add(cubeTrigger);
+      scene.add(avatar);
+    });
+    loader.load('./models/Coin.dae', collada => {
+      coin = collada.scene;
+      coin.traverse(function(node) {
+        if (node.isSkinnedMesh) {
+          node.frustumCulled = false;
+        }
+        node.castShadow = true;
+        node.receiveShadow = true;
+      });
+      coin.position.set(10, 3, 0);
+      coin.castShadow = true;
+      coin.receiveShadow = true;
+      var geometry = new THREE.BoxGeometry(1200, 2500, 1200, 8, 8, 8);
+      var material = new THREE.MeshPhongMaterial({
+        transparent: true,
+        opacity: 0
+      });
+      coin1 = new THREE.Mesh(geometry, material);
+      coin.add(coin1);
+      scene.add(coin);
+    });
+    var diffuseMap = textureLoader.load('/textures/metal.jpg', function(
+      diffuseMap
+    ) {
+      diffuseMap.wrapS = diffuseMap.wrapT = THREE.RepeatWrapping;
+      diffuseMap.offset.set(30, 30);
+      diffuseMap.repeat.set(10, 10);
+    });
+    diffuseMap.encoding = THREE.sRGBEncoding;
+    var normalMap = textureLoader.load('/textures/metal_N.jpg', function(
+      normalMap
+    ) {
+      normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+      normalMap.offset.set(30, 30);
+      normalMap.repeat.set(10, 10);
+    });
+    diffuseMap.encoding = THREE.sRGBEncoding;
+    const meshFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100, 100, 100),
+      new THREE.MeshPhongMaterial({
+        color: 0xdddddd,
+        specular: 0x222222,
+        shininess: 50,
+        map: diffuseMap,
+        normalMap: normalMap,
+        side: THREE.FrontSide
+      })
+    );
+    meshFloor.rotation.x -= Math.PI / 2;
+    //meshFloor.material.side = THREE.DoubleSide;
+    meshFloor.receiveShadow = true;
+    meshFloor.castShadow = true;
+    scene.add(meshFloor);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0x404040);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.camera.near = 0.0001;
+    directionalLight.shadow.camera.far = 40;
+    var d = 100;
+    directionalLight.shadow.camera.right = d;
+    directionalLight.shadow.camera.left = -d;
+    directionalLight.shadow.camera.top = d;
+    directionalLight.shadow.camera.bottom = -d;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.radius = 4;
+    directionalLight.shadow.bias = -0.0005;
+    directionalLight.position.y = 20;
+    directionalLight.position.z = 0;
+    directionalLight.position.x = 0;
+
+    scene.add(directionalLight);
+    scene.add(ambient);
+    //scene.background = new THREE.Color('cyan');
+    var light = new THREE.PointLight(0xff0000, 1, 50);
+    light.position.set(30, 5, 1);
+    light.castShadow = true;
+
+    scene.add(light);
+    //scene.add(cubeTrigger);
+
+    //render();
+    startGame.addEventListener('click', function() {
+      render();
+    });
+    function render() {
+      requestAnimationFrame(render);
+      //p -= 0.1;
+      //avatar.position.set(0, 0, p);
+      //camera.rotation.x = -200;
+      var delta = clock.getDelta();
+      var moveDistance = 15 * delta;
+      var rotateAngle = (Math.PI / 2) * delta;
+      var rotation_matrix = new THREE.Matrix4().identity();
+      //camera.getWorldDirection(direction);
+      if (keyboard[87]) {
+        avatar.translateY(moveDistance);
+        mixer.clipAction(animations[0]).play();
+      } else if (keyboard[83]) {
+        avatar.translateY(-moveDistance);
+        mixer.clipAction(animations[0]).play();
+      } else if (keyboard[65]) {
+        avatar.rotation.z += 0.05;
+      } else if (keyboard[68]) {
+        avatar.rotation.z -= 0.05;
+      } else if (keyboard[32]) {
+        avatar.translateZ(moveDistance);
+        if (avatar.position.y > 5) {
+          keyboard[32] = false;
+          goDown = true;
+        }
+      } else if (goDown) {
+        avatar.translateZ(-moveDistance);
+        if (avatar.position.y <= 0.1) {
+          goDown = false;
+        }
+      } else {
+        mixer.clipAction(animations[0]).stop();
+      }
+
+      camera.position.y = -15;
+      camera.position.z = 8;
+      camera.position.x = 0;
+      camera.lookAt(
+        avatar.position.x,
+        avatar.position.y + 2,
+        avatar.position.z
+      );
+
+      if (mixer !== undefined) {
+        mixer.update(delta);
+      }
+
+      renderer.render(scene, camera);
+
+      if (coin1) {
+        if (detectCollisionCubes(cubeTrigger, coin1)) {
+          //coin1.parent.remove(coin1);
+          coin1.parent.visible = false;
+          coin1.geometry.dispose();
+          coin1.material.dispose();
+          coin1 = undefined;
+          totalCoins++;
+          hud.innerHTML = 'Coins: ' + totalCoins;
+        }
+      }
+
+      if (totalCoins === 1) {
+        win.innerHTML = 'Winner winner chicken dinner!';
+        win.style.opacity = 1;
+      }
+    }
+    function detectCollisionCubes(object1, object2) {
+      object1.geometry.computeBoundingBox(); //not needed if its already calculated
+      object2.geometry.computeBoundingBox();
+      object1.updateMatrixWorld();
+      object2.updateMatrixWorld();
+
+      var box1 = object1.geometry.boundingBox.clone();
+      box1.applyMatrix4(object1.matrixWorld);
+
+      var box2 = object2.geometry.boundingBox.clone();
+      box2.applyMatrix4(object2.matrixWorld);
+
+      return box1.intersectsBox(box2);
+    }
+  </script>
+</html>
